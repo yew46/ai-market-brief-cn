@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 from company_rotation import pick_company_for_date
 from llm_summary import compact_news_for_prompt, summarize_with_openai
-from sources import NewsItem, company_reference_links, fetch_market_news
+from sources import NewsItem, company_reference_links, enrich_article_text, fetch_market_news
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,7 +73,7 @@ def related_companies(item: NewsItem, companies: list[dict[str, Any]]) -> list[s
     return matched[:6]
 
 
-def select_top_news(news: list[NewsItem], companies: list[dict[str, Any]], limit: int = 8) -> list[NewsItem]:
+def select_top_news(news: list[NewsItem], companies: list[dict[str, Any]], limit: int = 1) -> list[NewsItem]:
     """选择最适合日报展示的新闻。
 
     简单策略：优先保留能匹配 watchlist 或核心主题的新闻。
@@ -106,6 +106,7 @@ def build_llm_prompt(
     today: date,
     companies: list[dict[str, Any]],
     news: list[NewsItem],
+    featured_news: list[NewsItem],
     research_company: dict[str, Any],
 ) -> str:
     """构造 LLM 提示词。"""
@@ -114,6 +115,7 @@ def build_llm_prompt(
         f"- {c['ticker']} {c['中文名']}：{c['所属主题']}；观察逻辑：{c['核心观察逻辑']}"
         for c in companies
     )
+    featured_text = compact_news_for_prompt(featured_news, limit=1)
     return f"""
 请基于下面的 watchlist 和新闻，生成一份中文 Markdown 日报。
 
@@ -126,7 +128,16 @@ def build_llm_prompt(
 5 条 bullet。
 
 ## 2. 今日 AI / 半导体 / Edge AI 新闻
-5-10 条，每条包括：标题、来源、链接、为什么重要、影响哪些公司。
+只写 1 条精选新闻，不要写多条。
+必须基于“精选新闻正文”做中文总结。如果正文不足，请基于 RSS 摘要总结，并明确写“正文抓取不足，需要继续读原文验证”。
+格式固定为：
+### 新闻：原始英文标题
+- 来源：来源名称
+- 链接：[原文链接](完整 URL)
+- 中文内容摘要：用 3-5 条 bullet 讲清楚原文到底说了什么。
+- 为什么重要：说明它对 AI / 半导体 / Edge AI / 电力 / Robotics 投资逻辑的意义。
+- 影响哪些公司：列出相关 ticker，并解释影响路径。
+- 需要继续验证：列出 2-3 个后续要查的事实或指标。
 
 ## 3. 重点股票观察
 覆盖 NVDA、QCOM、AMBA、AMD、AVGO、TSM、VRT、GEV、VST。
@@ -143,7 +154,10 @@ def build_llm_prompt(
 Watchlist：
 {watchlist_text}
 
-新闻：
+精选新闻正文：
+{featured_text}
+
+其他新闻线索，仅用于理解市场背景和股票观察，不要在第 2 节逐条展开：
 {compact_news_for_prompt(news)}
 """.strip()
 
@@ -169,18 +183,20 @@ def fallback_news_section(top_news: list[NewsItem], companies: list[dict[str, An
     if not top_news:
         return "- 今天 RSS 抓取没有返回可用新闻。建议检查网络、RSS 源或稍后重试。"
 
-    lines: list[str] = []
-    for item in top_news:
-        affected = related_companies(item, companies)
-        lines.append(
-            f"- **标题**：{item.title}\n"
-            f"  - 来源：{item.source}\n"
-            f"  - 链接：{item.link}\n"
-            f"  - 为什么重要：这条新闻可能影响 AI、半导体、数据中心、电力或机器人产业链预期，"
-            f"需要进一步阅读原文确认具体影响。\n"
-            f"  - 影响哪些公司：{', '.join(affected) if affected else '暂未直接匹配 watchlist，公司影响需要继续验证'}"
-        )
-    return "\n\n".join(lines)
+    item = top_news[0]
+    affected = related_companies(item, companies)
+    source_text = item.article_text or item.summary or "正文抓取不足，需要继续读原文验证。"
+    short_summary = source_text[:600]
+    return (
+        f"### 新闻：{item.title}\n\n"
+        f"- 来源：{item.source}\n"
+        f"- 链接：[原文链接]({item.link})\n"
+        f"- 中文内容摘要：{short_summary}\n"
+        f"- 为什么重要：这条新闻可能影响 AI、半导体、数据中心、电力或机器人产业链预期，"
+        f"需要进一步阅读原文确认具体影响。\n"
+        f"- 影响哪些公司：{', '.join(affected) if affected else '暂未直接匹配 watchlist，公司影响需要继续验证'}\n"
+        f"- 需要继续验证：查看原文细节、相关公司财报指引、订单或客户合作是否支持这条新闻的长期影响。"
+    )
 
 
 def fallback_stock_watch(companies: list[dict[str, Any]], news: list[NewsItem]) -> str:
@@ -256,11 +272,12 @@ def build_fallback_report(
     today: date,
     companies: list[dict[str, Any]],
     news: list[NewsItem],
+    featured_news: list[NewsItem],
     research_company: dict[str, Any],
 ) -> str:
     """没有 OpenAI 输出时，生成完整基础日报。"""
 
-    top_news = select_top_news(news, companies, limit=8)
+    top_news = featured_news or select_top_news(news, companies, limit=1)
     return f"""# AI 市场每日简报 - {today.isoformat()}
 
 ## 1. 今日核心结论
@@ -305,10 +322,13 @@ def main() -> int:
 
     research_company = pick_company_for_date(companies, today)
     news = fetch_market_news(companies)
+    featured_news = select_top_news(news, companies, limit=1)
+    if featured_news:
+        enrich_article_text(featured_news[0])
 
-    prompt = build_llm_prompt(today, companies, news, research_company)
+    prompt = build_llm_prompt(today, companies, news, featured_news, research_company)
     llm_report = summarize_with_openai(prompt)
-    content = llm_report or build_fallback_report(today, companies, news, research_company)
+    content = llm_report or build_fallback_report(today, companies, news, featured_news, research_company)
 
     report_path = write_report(content, today)
     print(f"[OK] 已生成报告: {report_path}")

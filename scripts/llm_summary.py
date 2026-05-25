@@ -60,6 +60,7 @@ def compact_news_for_prompt(news: list[Any], limit: int = 25) -> str:
             f"   来源: {item.source}\n"
             f"   日期: {item.published or '未知'}\n"
             f"   摘要: {item.summary or '无'}\n"
+            f"   正文: {getattr(item, 'article_text', '') or '未抓取到正文'}\n"
             f"   链接: {item.link}"
         )
     return "\n".join(lines)
