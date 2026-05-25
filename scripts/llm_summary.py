@@ -21,7 +21,7 @@ def has_openai_key() -> bool:
     return bool(os.getenv("OPENAI_API_KEY"))
 
 
-def summarize_with_openai(prompt: str, max_tokens: int = 2200) -> str | None:
+def summarize_with_openai(prompt: str, max_tokens: int = 5000) -> str | None:
     """调用 OpenAI 生成中文总结。失败时返回 None。"""
 
     if not has_openai_key():
@@ -35,8 +35,9 @@ def summarize_with_openai(prompt: str, max_tokens: int = 2200) -> str | None:
                 {
                     "role": "system",
                     "content": (
-                        "你是中文投资研究助手。请用清晰、谨慎、适合复盘的中文输出。"
-                        "不要编造事实；如果信息不足，请明确说需要继续验证。"
+                        "你是中文科技投资研究员，风格接近 hedge fund research note。"
+                        "请输出结构化判断，不要只翻译新闻。不要编造事实；"
+                        "如果信息不足，请明确说需要继续验证。"
                     ),
                 },
                 {"role": "user", "content": prompt},

@@ -1,6 +1,23 @@
 # ai-market-brief-cn
 
-每天自动生成一份中文版 AI / 半导体 / Edge AI / 电力 / Robotics 市场跟踪报告，并每天轮换研究一家公司商业逻辑。
+每天自动生成一份中文版 AI / 半导体 / Edge AI / 电力 / Robotics 主题趋势研究报告，并每天轮换研究一家公司商业逻辑。
+
+项目已经升级为：
+
+```text
+AI Theme Intelligence System（AI 主题趋势研究系统）
+```
+
+它不只是做新闻摘要，而是更关注：
+
+- 市场 narrative（叙事）变化
+- AI 产业结构
+- 估值重估逻辑（rerating）
+- 护城河分析
+- 趋势验证
+- 板块轮动
+- AI 基础设施演化
+- 交易日 / 非交易日的不同研究模式
 
 报告会保存到 `reports/` 目录，文件名格式为：
 
@@ -36,6 +53,13 @@ ai-market-brief-cn/
   scripts/
     daily_brief.py
     company_rotation.py
+    market_calendar.py
+    narrative_detection.py
+    theme_clustering.py
+    dynamic_mover_scanner.py
+    sector_relationship_engine.py
+    rerating_analysis.py
+    thesis_tracker.py
     sources.py
     llm_summary.py
   reports/
@@ -89,6 +113,58 @@ python scripts/daily_brief.py
 
 ```text
 reports/2026-05-24-ai-market-brief-cn.md
+```
+
+## 报告模式
+
+系统会自动判断今天是否是美股交易日。
+
+如果是交易日，报告使用：
+
+```text
+Trading Day Mode（交易日模式）
+```
+
+重点关注：
+
+- 今日股价异动
+- 成交量变化
+- 板块轮动
+- earnings reaction
+- market narrative shift
+- dynamic movers
+
+如果是周末或美国主要节假日，报告使用：
+
+```text
+Non-Trading Day / Weekend Research Mode（非交易日研究模式）
+```
+
+重点改为：
+
+- 最近 AI narrative 变化
+- 长期趋势研究
+- 深度公司研究
+- AI 产业链 mapping
+- thesis tracking
+- edge AI / robotics / inference / power 等长期方向
+
+非交易日报告会更像“周末科技产业研究笔记”，不会强行写“今日股价异动”。
+
+## 新版报告结构
+
+新版报告会包含：
+
+```text
+0. 报告模式
+1. 今日市场主线
+2. Narrative Shift（叙事迁移）
+3. AI Sector Heatmap（AI 板块热度图）
+4. Dynamic AI Movers（动态 AI 异动发现）
+5. 深度公司研究
+6. AI Industry Chain Mapping（AI 产业链关系图）
+7. Thesis Tracking（长期 thesis 跟踪）
+8. Thinking Questions（思考问题）
 ```
 
 ## 新闻来源

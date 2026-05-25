@@ -18,8 +18,15 @@ from typing import Any
 from dotenv import load_dotenv
 
 from company_rotation import pick_company_for_date
+from dynamic_mover_scanner import DynamicMover, scan_dynamic_movers
 from llm_summary import compact_news_for_prompt, summarize_with_openai
+from market_calendar import MarketMode, get_market_mode
+from narrative_detection import NarrativeShift, detect_narrative_shifts, infer_primary_narrative
+from rerating_analysis import ReratingProfile, build_rerating_profile
+from sector_relationship_engine import build_relationship_chain, format_relationship_chain
 from sources import NewsItem, company_reference_links, enrich_article_text, fetch_market_news
+from theme_clustering import ThemeSignal, build_theme_heatmap, theme_summary
+from thesis_tracker import Thesis, build_thesis_table
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,6 +115,14 @@ def build_llm_prompt(
     news: list[NewsItem],
     featured_news: list[NewsItem],
     research_company: dict[str, Any],
+    market_mode: MarketMode,
+    primary_narrative: str,
+    theme_signals: list[ThemeSignal],
+    narrative_shifts: list[NarrativeShift],
+    movers: list[DynamicMover],
+    rerating_profile: ReratingProfile,
+    relationship_chain: list[str],
+    theses: list[Thesis],
 ) -> str:
     """构造 LLM 提示词。"""
 
@@ -116,50 +131,207 @@ def build_llm_prompt(
         for c in companies
     )
     featured_text = compact_news_for_prompt(featured_news, limit=1)
+    theme_text = format_theme_signals(theme_signals)
+    shift_text = format_narrative_shifts(narrative_shifts)
+    mover_text = format_movers(movers)
+    thesis_text = format_thesis_table(theses)
+    moat_text = "\n".join(f"- {key}: {value}" for key, value in rerating_profile.moat_analysis.items())
     return f"""
-请基于下面的 watchlist 和新闻，生成一份中文 Markdown 日报。
+请基于下面的信息，生成一份中文 Markdown 报告。
+报告定位：AI Theme Intelligence System（AI 主题趋势研究系统）。
+风格：专业、分析型、类似科技 hedge fund research note，但适合强学习型初学者阅读。
+不要只做新闻翻译，必须输出结构化判断。信息不足时明确写“需要继续验证”。
 
 日期：{today.isoformat()}
+报告模式：{market_mode.mode_name}
+模式原因：{market_mode.reason}
 
 必须严格使用以下结构：
-# AI 市场每日简报 - {today.isoformat()}
+# AI Theme Intelligence System - {today.isoformat()}
 
-## 1. 今日核心结论
-5 条 bullet。
+## 0. 报告模式
+写明 Trading Day Mode 或 Non-Trading Day / Weekend Research Mode，并解释今天为什么采用该模式。
 
-## 2. 今日 AI / 半导体 / Edge AI 新闻
-只写 1 条精选新闻，不要写多条。
-必须基于“精选新闻正文”做中文总结。如果正文不足，请基于 RSS 摘要总结，并明确写“正文抓取不足，需要继续读原文验证”。
-格式固定为：
-### 新闻：原始英文标题
-- 来源：来源名称
-- 链接：[原文链接](完整 URL)
-- 中文内容摘要：用 3-5 条 bullet 讲清楚原文到底说了什么。
-- 为什么重要：说明它对 AI / 半导体 / Edge AI / 电力 / Robotics 投资逻辑的意义。
-- 影响哪些公司：列出相关 ticker，并解释影响路径。
-- 需要继续验证：列出 2-3 个后续要查的事实或指标。
+## 1. 今日市场主线
+如果是交易日，回答“市场今天真正交易的是什么？”
+如果是非交易日，回答“最近市场 / 产业最重要的 AI 主线是什么？”
+必须把主线和可验证证据连接起来。
 
-## 3. 重点股票观察
-覆盖 NVDA、QCOM、AMBA、AMD、AVGO、TSM、VRT、GEV、VST。
-每家公司包括：今日异动、可能原因、是否影响长期逻辑。
-如果没有足够价格或新闻信息，请明确写“需要继续验证”，不要编造股价。
+## 2. Narrative Shift（叙事迁移）
+解释是否发生 training -> inference、GPU -> networking、cloud AI -> edge AI、chatbot -> physical AI、AI model -> AI infrastructure、datacenter -> power/cooling bottleneck 等迁移。
+必须解释：为什么重要、哪些公司受益、哪些环节可能失去定价权、这是短期交易还是长期产业趋势。
 
-## 4. 今日公司商业逻辑研究
+## 3. AI Sector Heatmap（AI 板块热度图）
+覆盖 GPU、Networking、Edge AI、Robotics、AI software、Power、Cooling、Foundry、AI PC、Datacenter、Inference、Physical AI。
+必须输出：当前最热主题、正在减弱的主题、新出现的主题、需要继续验证的主题。
+
+## 4. Dynamic AI Movers（动态 AI 异动发现）
+交易日：解释 AI 异常异动、高成交量、earnings reaction、market narrative shift。
+非交易日：改成“最近值得关注的新进入 AI 主线公司”，重点看新订单、新产品、新合作、earnings call narrative、产业链位置。
+每个对象都要分类：meme/speculation、sector-wide move、long-term narrative shift，或非交易日主线候选。
+
+## 5. 深度公司研究
 公司：{research_company['ticker']} {research_company['中文名']}
-必须包含固定小节：一句话理解、收入来源、增长故事、护城河、估值问题、风险、未来需要观察的验证点、我的初步判断。
+必须包含：当前市场认知、Bull Case、Bear Case、Real Rerating Trigger、Moat Analysis、Price-In Status、关键观察指标、我的初步判断。
 
-## 5. 今日需要继续思考的问题
-3 个问题。
+## 6. AI Industry Chain Mapping（AI 产业链关系图）
+解释 AI 不同板块之间的因果关系，帮助建立产业结构理解能力。
+
+## 7. Thesis Tracking（长期 thesis 跟踪）
+用 Markdown 表格输出：Thesis、当前状态、证据、需要验证。
+
+## 8. Thinking Questions（思考问题）
+输出 5 个更深的问题，例如：什么还没有 fully priced in？哪一层真正赚最多利润？谁控制 ecosystem？这是短期交易还是长期迁移？
 
 Watchlist：
 {watchlist_text}
 
+系统初步判断：
+- 主线：{primary_narrative}
+- 主题热度：
+{theme_text}
+- 叙事迁移：
+{shift_text}
+- 动态异动 / 新主线候选：
+{mover_text}
+- 产业链关系：
+{format_relationship_chain(relationship_chain)}
+- 深度研究公司初稿：
+  - 当前市场认知：{rerating_profile.market_perception}
+  - Bull Case：{rerating_profile.bull_case}
+  - Bear Case：{rerating_profile.bear_case}
+  - Real Rerating Trigger：{rerating_profile.rerating_trigger}
+  - Price-In Status：{rerating_profile.price_in_status}
+  - Moat Analysis：
+{moat_text}
+  - 关键观察指标：{', '.join(rerating_profile.key_metrics)}
+- Thesis Tracking：
+{thesis_text}
+
 精选新闻正文：
 {featured_text}
 
-其他新闻线索，仅用于理解市场背景和股票观察，不要在第 2 节逐条展开：
+其他新闻线索：
 {compact_news_for_prompt(news)}
 """.strip()
+
+
+def format_theme_signals(signals: list[ThemeSignal]) -> str:
+    """把主题热度转成提示词和 fallback 可读文本。"""
+
+    if not signals:
+        return "- 暂无主题信号。"
+    lines = []
+    for signal in signals[:12]:
+        evidence = "；".join(signal.evidence[:2]) if signal.evidence else "暂无直接新闻证据"
+        lines.append(f"- {signal.theme}: score={signal.score}; evidence={evidence}")
+    return "\n".join(lines)
+
+
+def format_narrative_shifts(shifts: list[NarrativeShift]) -> str:
+    """格式化叙事迁移。"""
+
+    if not shifts:
+        return "- 暂未识别到明确叙事迁移，需要继续验证。"
+    lines = []
+    for shift in shifts:
+        lines.append(
+            f"- {shift.name}: {shift.importance} 受益：{', '.join(shift.beneficiaries) or '待验证'}；"
+            f"可能失去定价权：{', '.join(shift.potential_losers) or '待验证'}；性质：{shift.duration}"
+        )
+    return "\n".join(lines)
+
+
+def format_movers(movers: list[DynamicMover]) -> str:
+    """格式化动态异动。"""
+
+    if not movers:
+        return "- 暂未发现明确动态异动或新主线公司。"
+    lines = []
+    for mover in movers:
+        pct = f"{mover.price_change_pct}%" if mover.price_change_pct is not None else "非交易日不适用"
+        lines.append(
+            f"- {mover.ticker}: 价格变化={pct}; 原因={mover.reason}; 分类={mover.move_type}; 成交量={mover.volume_note}"
+        )
+    return "\n".join(lines)
+
+
+def format_thesis_table(theses: list[Thesis]) -> str:
+    """格式化 thesis tracking 表格。"""
+
+    rows = ["| Thesis | 当前状态 | 证据 | 需要验证 |", "|---|---|---|---|"]
+    for thesis in theses:
+        rows.append(f"| {thesis.name} | {thesis.status} | {thesis.evidence} | {thesis.needs_validation} |")
+    return "\n".join(rows)
+
+
+def fallback_market_mode_section(market_mode: MarketMode) -> str:
+    """无 LLM 时输出报告模式。"""
+
+    return f"- 报告模式：{market_mode.mode_name}\n- 判断原因：{market_mode.reason}"
+
+
+def fallback_main_line(primary_narrative: str, market_mode: MarketMode) -> str:
+    """无 LLM 时输出市场主线。"""
+
+    if market_mode.is_trading_day:
+        return (
+            f"{primary_narrative}\n\n"
+            "交易日要继续验证：这条主线是否同时体现在股价、成交量、领涨/领跌公司和 earnings reaction 中。"
+        )
+    return (
+        f"{primary_narrative}\n\n"
+        "非交易日不应强行写股价异动，更适合检查产业证据、管理层表态、订单和长期 thesis 是否变强。"
+    )
+
+
+def fallback_heatmap_section(signals: list[ThemeSignal]) -> str:
+    """无 LLM 时输出 AI sector heatmap。"""
+
+    summary = theme_summary(signals)
+
+    def names(items: list[ThemeSignal]) -> str:
+        return ", ".join(f"{item.theme}({item.score})" for item in items) or "暂无"
+
+    return (
+        f"- 当前最热主题：{names(summary['hot'])}\n"
+        f"- 新出现 / 次热主题：{names(summary['emerging'])}\n"
+        f"- 正在减弱的主题：{names(summary['weakening'])}\n"
+        f"- 需要继续验证：{names(summary['needs_validation'])}\n\n"
+        f"详细信号：\n{format_theme_signals(signals)}"
+    )
+
+
+def fallback_company_research_v2(company: dict[str, Any], profile: ReratingProfile) -> str:
+    """无 LLM 时输出升级版公司研究。"""
+
+    moat = "\n".join(f"- {key}: {value}" for key, value in profile.moat_analysis.items())
+    metrics = "\n".join(f"- {metric}" for metric in profile.key_metrics)
+    return f"""### 公司：{company['ticker']} - {company['中文名']}
+
+#### 当前市场认知
+{profile.market_perception}
+
+#### Bull Case（看多逻辑）
+{profile.bull_case}
+
+#### Bear Case（看空逻辑）
+{profile.bear_case}
+
+#### Real Rerating Trigger
+{profile.rerating_trigger}
+
+#### 护城河分析（Moat Analysis）
+{moat}
+
+#### Price-In Status
+{profile.price_in_status}。这是启发式判断，需要结合估值倍数、业绩指引和市场预期继续验证。
+
+#### 关键观察指标
+{metrics}
+
+#### 我的初步判断
+{company['中文名']}不是只看一条新闻就能判断的公司。关键是判断它到底只是趋势受益者，还是能在产业链中持续捕获利润的价值捕获者。"""
 
 
 def fallback_core_conclusions(top_news: list[NewsItem]) -> str:
@@ -274,28 +446,59 @@ def build_fallback_report(
     news: list[NewsItem],
     featured_news: list[NewsItem],
     research_company: dict[str, Any],
+    market_mode: MarketMode,
+    primary_narrative: str,
+    theme_signals: list[ThemeSignal],
+    narrative_shifts: list[NarrativeShift],
+    movers: list[DynamicMover],
+    rerating_profile: ReratingProfile,
+    relationship_chain: list[str],
+    theses: list[Thesis],
 ) -> str:
-    """没有 OpenAI 输出时，生成完整基础日报。"""
+    """没有 OpenAI 输出时，生成 AI Theme Intelligence 基础报告。"""
 
     top_news = featured_news or select_top_news(news, companies, limit=1)
-    return f"""# AI 市场每日简报 - {today.isoformat()}
+    mode_label = "交易日模式" if market_mode.is_trading_day else "非交易日研究模式"
+    dynamic_title = "Dynamic AI Movers（动态 AI 异动发现）" if market_mode.is_trading_day else "最近值得关注的新进入 AI 主线公司"
+    return f"""# AI Theme Intelligence System - {today.isoformat()}
 
-## 1. 今日核心结论
-{fallback_core_conclusions(top_news)}
+## 0. 报告模式
+{fallback_market_mode_section(market_mode)}
 
-## 2. 今日 AI / 半导体 / Edge AI 新闻
+## 1. 今日市场主线
+{fallback_main_line(primary_narrative, market_mode)}
+
+## 2. Narrative Shift（叙事迁移）
+{format_narrative_shifts(narrative_shifts)}
+
+## 3. AI Sector Heatmap（AI 板块热度图）
+{fallback_heatmap_section(theme_signals)}
+
+## 4. {dynamic_title}
+{format_movers(movers)}
+
+## 5. 深度公司研究
+{fallback_company_research_v2(research_company, rerating_profile)}
+
+## 6. AI Industry Chain Mapping（AI 产业链关系图）
+{format_relationship_chain(relationship_chain)}
+
+这条关系图的意义在于：AI 投资不能只看单家公司，而要看瓶颈从哪一层转移到哪一层。利润通常流向控制瓶颈、生态或客户预算入口的环节。
+
+## 7. Thesis Tracking（长期 thesis 跟踪）
+{format_thesis_table(theses)}
+
+## 8. 精选新闻证据
 {fallback_news_section(top_news, companies)}
 
-## 3. 重点股票观察
-{fallback_stock_watch(companies, news)}
+## 9. Thinking Questions（思考问题）
+- 当前 AI 主线里，什么还没有被 fully priced in？
+- 产业链哪一层真正赚最多利润：芯片、网络、电力、散热、软件，还是平台入口？
+- 这家公司是趋势受益者，还是价值捕获者？
+- 谁控制 ecosystem，谁只是可替换供应商？
+- 这个 narrative 是短期交易，还是长期产业迁移？
 
-## 4. 今日公司商业逻辑研究
-{fallback_company_research(research_company)}
-
-## 5. 今日需要继续思考的问题
-- 今天哪些新闻只是短期情绪，哪些会真正改变公司未来 2-3 年收入和利润？
-- AI 数据中心需求会先体现在哪些环节：GPU、网络、散热、电力、核电还是软件？
-- 对今天轮换研究的公司，下一份财报最应该验证哪 3 个数字？
+> 当前为 {mode_label}。如果是非交易日，本报告刻意降低“今日股价异动”权重，把重点放在产业结构、thesis tracking 和重估触发器上。
 """
 
 
@@ -321,14 +524,51 @@ def main() -> int:
         return 1
 
     research_company = pick_company_for_date(companies, today)
+    market_mode = get_market_mode(today)
     news = fetch_market_news(companies)
     featured_news = select_top_news(news, companies, limit=1)
     if featured_news:
         enrich_article_text(featured_news[0])
 
-    prompt = build_llm_prompt(today, companies, news, featured_news, research_company)
+    theme_signals = build_theme_heatmap(news, companies)
+    narrative_shifts = detect_narrative_shifts(theme_signals)
+    primary_narrative = infer_primary_narrative(theme_signals, market_mode)
+    movers = scan_dynamic_movers(news, market_mode)
+    relationship_chain = build_relationship_chain(theme_signals)
+    rerating_profile = build_rerating_profile(research_company)
+    theses = build_thesis_table(theme_signals)
+
+    prompt = build_llm_prompt(
+        today=today,
+        companies=companies,
+        news=news,
+        featured_news=featured_news,
+        research_company=research_company,
+        market_mode=market_mode,
+        primary_narrative=primary_narrative,
+        theme_signals=theme_signals,
+        narrative_shifts=narrative_shifts,
+        movers=movers,
+        rerating_profile=rerating_profile,
+        relationship_chain=relationship_chain,
+        theses=theses,
+    )
     llm_report = summarize_with_openai(prompt)
-    content = llm_report or build_fallback_report(today, companies, news, featured_news, research_company)
+    content = llm_report or build_fallback_report(
+        today=today,
+        companies=companies,
+        news=news,
+        featured_news=featured_news,
+        research_company=research_company,
+        market_mode=market_mode,
+        primary_narrative=primary_narrative,
+        theme_signals=theme_signals,
+        narrative_shifts=narrative_shifts,
+        movers=movers,
+        rerating_profile=rerating_profile,
+        relationship_chain=relationship_chain,
+        theses=theses,
+    )
 
     report_path = write_report(content, today)
     print(f"[OK] 已生成报告: {report_path}")
