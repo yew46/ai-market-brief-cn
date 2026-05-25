@@ -1,0 +1,38 @@
+name: Daily AI Market Brief CN
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub Actions 使用 UTC。01:05 UTC 大约是美国东部夏令时晚上 9:05。
+    - cron: "5 1 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  daily-brief:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate daily report
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4o-mini
+        run: python scripts/daily_brief.py
+
+      - name: Commit generated report
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Add daily AI market brief"
+          file_pattern: reports/*.md
