@@ -3,8 +3,9 @@ name: Daily AI Market Brief CN
 on:
   workflow_dispatch:
   schedule:
-    # GitHub Actions 使用 UTC。01:05 UTC 大约是美国东部夏令时晚上 9:05。
-    - cron: "5 1 * * *"
+    # GitHub Actions 使用 UTC。01:37 UTC 大约是美国东部夏令时晚上 9:37。
+    # 避开整点附近，降低 schedule 被 GitHub 延迟或跳过的概率。
+    - cron: "37 1 * * *"
 
 permissions:
   contents: write
@@ -27,6 +28,7 @@ jobs:
 
       - name: Generate daily report
         env:
+          TZ: America/New_York
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-4o-mini
         run: python scripts/daily_brief.py
